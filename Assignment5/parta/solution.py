@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[ ]:
 
 
 import csv
@@ -52,9 +52,10 @@ elif torch.has_cuda:
 glove = GloVe()
 torch.cuda.empty_cache()
 print(torch.cuda.is_available())
+torch.cuda.set_per_process_memory_fraction(0.7)
 
 
-# In[2]:
+# In[ ]:
 
 
 def expand_contractions_text(text):    
@@ -138,7 +139,7 @@ def create_expand_contractions_component(nlp : Language, name: str):
     return ExpandContractionsClass(nlp)
 
 
-# In[3]:
+# In[ ]:
 
 
 nlp = spacy.load('en_core_web_sm')
@@ -146,7 +147,7 @@ if EXPAND_CONTRACTIONS:
     nlp.add_pipe("expand_contractions_component",before='tagger')
 
 
-# In[4]:
+# In[ ]:
 
 
 def preprocess_text(text):    
@@ -193,7 +194,7 @@ def preprocess_text(text):
     return text
 
 
-# In[5]:
+# In[ ]:
 
 
 # preprocess the training data which was given for Assignment 2
@@ -218,7 +219,7 @@ def process_assignment2_training_data():
 #process_assignment2_training_data()
 
 
-# In[6]:
+# In[ ]:
 
 
 preprocessed_dataset = []
@@ -236,7 +237,7 @@ with open(TRAIN_FILE_NAME ,encoding='utf-8') as f:
 train_dataset_labels = np.array(train_dataset_labels)
 
 
-# In[7]:
+# In[ ]:
 
 
 processed_dataset = []
@@ -248,7 +249,7 @@ for review in preprocessed_dataset:
  
 
 
-# In[8]:
+# In[ ]:
 
 
 class ReviewDataSet(Dataset):
@@ -265,7 +266,7 @@ class ReviewDataSet(Dataset):
 dataset = ReviewDataSet(processed_dataset)
 
 
-# In[9]:
+# In[ ]:
 
 
 # Train and Validation split and an equal distriubition of classes
@@ -308,18 +309,18 @@ train_dataloader = DataLoader(dataset,64,sampler=train_sampler,collate_fn=collat
 valid_dataloader = DataLoader(dataset,64,sampler=valid_sampler,collate_fn=collate_function)
 
 
-# In[10]:
+# In[ ]:
 
 
 batch_data = next(iter(train_dataloader))
 
 
-# In[11]:
+# In[ ]:
 
 
 class PretrainedModel(nn.Module):
 
-    def __init__(self, dropout = 0.3):
+    def __init__(self, dropout = 0.2):
         super().__init__()
 
         self.bert_model = DistilBertModel.from_pretrained("distilbert-base-uncased")
@@ -328,6 +329,7 @@ class PretrainedModel(nn.Module):
         self.fc2 = nn.Linear(256,128)
         self.fc3 = nn.Linear(128,1)
         self.sigmoid = nn.Sigmoid()
+        self.fc_dropout = nn.Dropout(dropout)
 
 
     def freeze_weights(self):
@@ -340,18 +342,47 @@ class PretrainedModel(nn.Module):
         output = self.bert_model(input_ids=inp,attention_mask=attention_mask,return_dict=False)[0]
         
         out = output[:,0,:]
-        out = F.relu(self.fc1(out))
-        out = F.relu(self.fc2(out))
+        out = F.relu(self.fc_dropout(self.fc1(out)))
+        out = F.relu(self.fc_dropout(self.fc2(out)))
         out = self.sigmoid(self.fc3(out))
         return out
 
 
-# In[12]:
+# In[ ]:
 
 
 pre_model = PretrainedModel()
 pre_model.freeze_weights()
 out = pre_model(batch_data['input'],batch_data['attention_mask'])
+
+
+# In[ ]:
+
+
+import math
+class PositionalEncoder(nn.Module):
+    """
+    https://pytorch.org/tutorials/beginner/transformer_tutorial.html
+    """
+    def __init__(self, d_model, max_length=5000, dropout=0.1):
+        super().__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        pe = torch.zeros(max_length, d_model)
+        position = torch.arange(0, max_length, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2).float()
+            * (-math.log(10000.0) / d_model)
+        )
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0)
+        self.register_buffer("pe", pe)
+
+    def forward(self, x):
+        x = x + self.pe[:, : x.size(1), :]
+        #return x
+        return self.dropout(x)
 
 
 # In[ ]:
@@ -390,9 +421,9 @@ class TransformerEncoderModel(nn.Module):
     def __init__(self,n_tokens=30522, d_model = 512, nhead=8, dim_feed_forward = 2048, nlayers=6, dropout = 0.3,fc_dropout_p=0.3, device_train = device_fast):
         super().__init__()
         
-        self.pos_encoder = PositionalEncoding(d_model)
-        encoder_layers = TransformerEncoderLayer(d_model,nhead,dim_feed_forward,batch_first=True)
-        self.transformer_encoder = TransformerEncoder(encoder_layers,nlayers)
+        self.pos_encoder = PositionalEncoder(d_model)
+        self.encoder_layers = TransformerEncoderLayer(d_model,nhead,dim_feed_forward,batch_first=True)
+        self.transformer_encoder = TransformerEncoder(self.encoder_layers,nlayers)
         self.device_train = device_train
        
         self.embedding_layer = nn.Embedding(n_tokens,d_model)
@@ -405,7 +436,7 @@ class TransformerEncoderModel(nn.Module):
 
         self.fc_dropout = nn.Dropout(fc_dropout_p)
         self.sigmoid = nn.Sigmoid()
-
+        self.init_weights()
 
      
     def create_src_mask(self,padding_mask):
@@ -415,7 +446,9 @@ class TransformerEncoderModel(nn.Module):
             attention_mask[i,padding_mask[i]:] = True
         return attention_mask
 
+
     def init_weights(self):
+        
         initrange = 0.1
         self.embedding_layer.weight.data.uniform_(-initrange, initrange)
 
@@ -426,11 +459,16 @@ class TransformerEncoderModel(nn.Module):
         # inp_mask =  ( Length = batch_size ) 
 
         embeddings = self.embedding_layer(inp) * math.sqrt(self.d_model)  # [batch_size, max_seq_length, embed_dim]
-        pos_encoded_embeddings = self.pos_encoder(embeddings,inp_mask)
+        #pos_encoded_embeddings = self.pos_encoder(embeddings,inp_mask)
+        
+        pos_encoded_embeddings = self.pos_encoder(embeddings)
+        
         src_attention_mask = self.create_src_mask(inp_mask)
         src_attention_mask = src_attention_mask.to(self.device_train)
+        
         output = self.transformer_encoder(pos_encoded_embeddings,src_key_padding_mask=src_attention_mask)
         cls_vector = output[:,0,:]
+        
         out = F.relu(self.fc_dropout(self.fc1(cls_vector)))
         out = F.relu(self.fc_dropout(self.fc2(out)))
         out = self.sigmoid(self.fc3(out))
@@ -441,14 +479,26 @@ class TransformerEncoderModel(nn.Module):
 
 
 t = TransformerEncoderModel(nlayers=4)
+loss = nn.BCELoss()
+optimizer = optim.Adam(t.parameters(),lr=0.001)
+criterion = nn.BCELoss()
 t  = t.to(device_fast)
 inp = batch_data['input'].to(device_fast)
-#inp = torch.randint(0,30522,(2,7))
-#inp_mask = [4,7]
-out = t(inp,batch_data['lengths'])
+ans = torch.tensor(batch_data['labels'])
 
 
-# In[13]:
+# In[ ]:
+
+
+for i in range(5):
+    optimizer.zero_grad()
+    out = t(inp,batch_data['lengths']).squeeze(1)
+    output = output.to(device_cpu)
+    loss = criterion(output,ans.float())
+    print(loss.item())
+
+
+# In[ ]:
 
 
 import os
@@ -584,7 +634,7 @@ def train(
                 break
 
 
-# In[14]:
+# In[ ]:
 
 
 EPOCHS = 100
@@ -597,7 +647,7 @@ train(model,train_dataloader,valid_dataloader,EPOCHS,nn.BCELoss(),optimizer,'che
 
 # ### Test phase
 
-# In[21]:
+# In[ ]:
 
 
 def test(model,test_data,sentence_lengths,attention_mask,test_labels,device_test):
@@ -627,7 +677,7 @@ def test(model,test_data,sentence_lengths,attention_mask,test_labels,device_test
 
 
 
-# In[19]:
+# In[ ]:
 
 
 test_review_ids = [] 
@@ -679,7 +729,7 @@ def getAssignmentTestData(load_from_trained=True):
 getAssignmentTestData(load_from_trained=True)
 
 
-# In[22]:
+# In[ ]:
 
 
 model = PretrainedModel()
