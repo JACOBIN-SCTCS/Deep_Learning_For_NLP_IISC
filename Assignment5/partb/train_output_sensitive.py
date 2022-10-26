@@ -15,6 +15,7 @@ import torch.nn as nn
 import torch
 from torch.utils.data import DataLoader
 from torchtext.vocab import vocab
+import torch.nn.functional as F
 
 train_dataset_name = 'ArithOpsTrain.xlsx'
 df = pd.read_excel(train_dataset_name)
@@ -114,6 +115,7 @@ class T5Dataset(Dataset):
         )
 
         current_input_numbers = [ float(x) for x in data_row['Input Numbers'].split(' ') ]
+        current_output = float(data_row['Output'])
 
         return dict(
             input_text = input_text,
@@ -124,7 +126,8 @@ class T5Dataset(Dataset):
             output_attention_mask = output_text_encoding['attention_mask'].flatten(),
             output_text_ids_custom_tokenizer = output_tokens_id_full,
             output_attention_mask_custom_tokenizer = output_attention_mask,
-            current_input_numbers = current_input_numbers
+            current_input_numbers = current_input_numbers,
+            current_output = current_output
         )  
 
 
@@ -162,6 +165,7 @@ def collate_function(batch_data):
     output_text_ids_custom_tokenizer = torch.stack([b['output_text_ids_custom_tokenizer'] for b in batch_data])
     output_attention_mask_custom_tokenizer = torch.stack([b['output_attention_mask_custom_tokenizer'] for b in batch_data])
     current_input_numbers = [ b['current_input_numbers'] for b in batch_data ] 
+    current_outputs = torch.tensor([b['current_output'] for b in batch_data])
     
     return {
         'input_text' : input_text,
@@ -172,7 +176,8 @@ def collate_function(batch_data):
         'output_attention_mask' : output_attention_mask,
         'output_text_ids_custom_tokenizer' : output_text_ids_custom_tokenizer,
         'output_attention_mask_custom_tokenizer' : output_attention_mask_custom_tokenizer,
-       ' current_input_numbers' : current_input_numbers
+        'current_input_numbers' : current_input_numbers,
+        'current_outputs' : current_outputs,
     }
 
 
@@ -184,13 +189,13 @@ valid_dataloader = DataLoader(valid_dataset,32,shuffle=True,collate_fn=collate_f
 # In[13]:
 
 
-batch_data = next(iter(train_dataloader))
+#batch_data = next(iter(train_dataloader))
 
 
 # In[14]:
 
 
-batch_data
+#batch_data
 
 
 # In[ ]:
@@ -419,9 +424,17 @@ class TransformerTranslator(pl.LightningModule):
 
         train_loss = loss_value*(1.0/predictions.shape[0])
 
+        output_labels = torch.topk(predictions,1,dim=2).indices.squeeze(2).tolist()
+        answers= []
+        for i in range(len(output_labels)):
+            question_text = " ".join(output_vocabulary.lookup_tokens(output_labels[i]))
+            answers.append(question_text)
+        final_answers = postfix_evaluation(answers,batch_data['current_input_numbers'])
 
+
+        regression_loss = F.mse_loss(final_answers,batch_data['current_outputs'])
         #train_loss = self.loss_fn(predictions,output_expected)
-        
+        train_loss = train_loss + 0.001*regression_loss
         self.log("train_loss" , train_loss, prog_bar=True,logger=True)
   
         return train_loss
@@ -460,7 +473,17 @@ class TransformerTranslator(pl.LightningModule):
 
         valid_loss = loss_value*(1.0/predictions.shape[0])
         #valid_loss = self.loss_fn(predictions,output_expected)
-        
+        output_labels = torch.topk(predictions,1,dim=2).indices.squeeze(2).tolist()
+        answers= []
+        for i in range(len(output_labels)):
+            question_text = " ".join(output_vocabulary.lookup_tokens(output_labels[i]))
+            answers.append(question_text)
+        final_answers = postfix_evaluation(answers,batch_data['current_input_numbers'])
+
+
+        regression_loss = F.mse_loss(final_answers,batch_data['current_outputs'])
+        #train_loss = self.loss_fn(predictions,output_expected)
+        valid_loss = valid_loss + 0.001*regression_loss
         self.log("valid_loss" , valid_loss, prog_bar=True,logger=True)
   
         return valid_loss

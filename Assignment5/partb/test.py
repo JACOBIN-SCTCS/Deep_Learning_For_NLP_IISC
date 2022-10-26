@@ -650,8 +650,8 @@ def get_answers(model,tokenizer,filename):
     input_numbers = []
     
     df = pd.read_excel(filename)
-    df = df.drop('Table 1',axis=1)
-    df = df.rename(columns=df.iloc[0]).loc[1:]
+    #df = df.drop('Table 1',axis=1)
+    #df = df.rename(columns=df.iloc[0]).loc[1:]
 
     for i in range(10):
         row = df.iloc[i]

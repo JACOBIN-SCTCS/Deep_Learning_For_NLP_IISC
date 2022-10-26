@@ -42,7 +42,7 @@ for i in range(len(df)):
             current_algebraic_symbol[counters[sym]-4]+=1
     algebraic_symbols.append(str(current_algebraic_symbol))
 
-df['algebra'] = algebraic_symbols
+df['algebraic_symbols'] = algebraic_symbols
 
 
 output_vocabulary = vocab(counters,)
