@@ -205,8 +205,6 @@ ans = postfix_evaluation(["+ - number0 number1 number2","+ / - number0 number2 n
 
 
 # In[ ]:
-
-
 import math
 
 class PositionalEncoding(nn.Module):
@@ -223,7 +221,7 @@ class PositionalEncoding(nn.Module):
         pos_encoding[:, 0::2] = torch.sin(positions_list * division_term)
         pos_encoding[:, 1::2] = torch.cos(positions_list * division_term)
         
-        pos_encoding = pos_encoding.unsqueeze(0).transpose(0, 1)
+        #pos_encoding = pos_encoding.unsqueeze(0).transpose(0, 1)
         self.register_buffer("pos_encoding",pos_encoding)
 
         
@@ -250,11 +248,11 @@ class TransformerModel(nn.Module):
     ):
         super().__init__()
 
-        '''self.positional_encoder = PositionalEncoding(
+        self.positional_encoder = PositionalEncoding(
             dim_model=dim_model,
             dropout_p= dropout_p,
             max_len=5000
-        )'''
+        )
 
         self.src_embedding = nn.Embedding.from_pretrained(bert_model.embeddings.word_embeddings.weight,freeze=False)
         #self.src_embedding = nn.Embedding(num_tokens_input,dim_model)
@@ -280,8 +278,8 @@ class TransformerModel(nn.Module):
         src = self.src_embedding(src) * math.sqrt(self.dim_model)
         target = self.trg_embedding(trg) * math.sqrt(self.dim_model)
         #print(target.shape)
-        #src = self.positional_encoder(src)
-        #target = self.positional_encoder(trg)
+        src = self.positional_encoder(src)
+        target = self.positional_encoder(target)
         
         transformer_out = self.transformer(
             src=  src,tgt = target,tgt_mask=target_mask,
