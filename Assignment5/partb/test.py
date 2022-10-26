@@ -298,6 +298,7 @@ class TransformerModel(nn.Module):
         mask = mask.float()
         mask = mask.masked_fill(mask==0,float('-inf'))
         mask = mask.masked_fill(mask==1,float(0.0))
+        return mask
 
     def get_padding_mask(self,matrix,pad_token):
         return (matrix==pad_token)
@@ -511,7 +512,7 @@ trainer = pl.Trainer(
 
 
 #model = T5ArithTranslator()
-Num_tokens_input=30522
+'''Num_tokens_input=30522
 Num_tokens_output=len(output_vocabulary)
 Dim_model=768
 Num_heads=8
@@ -529,13 +530,13 @@ model = TransformerTranslator(
     Num_decoder_layers,
     Dim_feedforward,
     Dropout_p
-)
+)'''
 
 
 # In[ ]:
 
 
-trainer.fit(model,train_dataloader,valid_dataloader)
+#trainer.fit(model,train_dataloader,valid_dataloader)
 
 
 # ### Inference Model
@@ -547,10 +548,36 @@ trainer.fit(model,train_dataloader,valid_dataloader)
 #    '/Users/depressedcoder/DLNLP/Assignment5/partb/checkpoints/best-checkpoint-v1.ckpt'
 #)
 
-test_model =  TransformerTranslator.load_from_checkpoint(
-    '/Users/depressedcoder/DLNLP/Assignment5/partb/checkpoints/best-checkpoint-v1.ckpt'
+'''test_model =  TransformerTranslator.load_from_checkpoint(
+    './checkpoints/transformer-scratch-best-checkpoint.ckpt'
 )
-test_model.freeze()
+
+test_model.freeze()'''
+
+Num_tokens_input=30522
+Num_tokens_output=len(output_vocabulary)
+Dim_model=768
+Num_heads=8
+Num_encoder_layers=6
+Num_decoder_layers=6
+Dim_feedforward= 2048
+Dropout_p=0.1
+
+
+test_model = TransformerTranslator(
+    Num_tokens_input,
+    Num_tokens_output,
+    Dim_model,
+    Num_heads,
+    Num_encoder_layers,
+    Num_decoder_layers,
+    Dim_feedforward,
+    Dropout_p
+)
+
+test_model.load_state_dict(torch.load('./checkpoints/transformer-scratch-best-checkpoint.ckpt',map_location=device_fast)["state_dict"])
+test_model.eval()
+
 
 t5_tokenizer = T5Tokenizer.from_pretrained("t5-small")
 special_tokens_dict = {'additional_special_tokens' : ['[SEP]']}
@@ -569,9 +596,10 @@ def predict(model, input_sequence, max_length=128, SOS_token=1, EOS_token=2):
     Daniel Melchor: https://medium.com/@danielmelchor/a-detailed-guide-to-pytorchs-nn-transformer-module-c80afbc9ffb1
     """
     model.eval()
+    input_sequence = input_sequence.to(device_fast)
     
-    y_input = torch.tensor([[1]], dtype=torch.long, device=device_fast)
 
+    y_input = torch.tensor([[1]], dtype=torch.long, device=device_fast)
     num_tokens = len(input_sequence[0])
 
     for _ in range(max_length):
@@ -601,9 +629,9 @@ test_input_ids = bert_tokenizer("last stop in their field trip was the aquarium 
 
 # In[ ]:
 
-
-predict(test_model,test_input_ids)
-
+test_model = test_model.to(device_fast)
+ans = predict(test_model,test_input_ids.to(device_fast))
+print(ans)
 
 # In[ ]:
 
