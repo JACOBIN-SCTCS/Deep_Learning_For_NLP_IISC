@@ -298,6 +298,7 @@ class TransformerModel(nn.Module):
         mask = mask.float()
         mask = mask.masked_fill(mask==0,float('-inf'))
         mask = mask.masked_fill(mask==1,float(0.0))
+        mask = mask.to(device_fast)
         return mask
 
     def get_padding_mask(self,matrix,pad_token):

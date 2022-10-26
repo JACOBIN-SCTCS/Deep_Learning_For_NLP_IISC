@@ -229,7 +229,7 @@ class PositionalEncoding(nn.Module):
         pos_encoding[:, 0::2] = torch.sin(positions_list * division_term)
         pos_encoding[:, 1::2] = torch.cos(positions_list * division_term)
         
-        pos_encoding = pos_encoding.unsqueeze(0).transpose(0, 1)
+        #pos_encoding = pos_encoding.unsqueeze(0).transpose(0, 1)
         self.register_buffer("pos_encoding",pos_encoding)
 
         
@@ -305,6 +305,8 @@ class TransformerModel(nn.Module):
         mask = mask.float()
         mask = mask.masked_fill(mask==0,float('-inf'))
         mask = mask.masked_fill(mask==1,float(0.0))
+        mask = mask.to(device_fast)
+        return mask
 
     def get_padding_mask(self,matrix,pad_token):
         return (matrix==pad_token)
