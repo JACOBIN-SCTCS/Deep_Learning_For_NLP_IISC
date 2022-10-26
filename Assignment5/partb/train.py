@@ -33,9 +33,21 @@ counters = {"[PAD]":1,"<SOS>":2,"<EOS>" : 3 , "+" : 4, "-" :5 , "*" : 6 , "/" : 
 for i in range(10):
     counters["number"+str(i)] = i + 8
 
+algebraic_symbols = []
+for i in range(len(df)):
+    row = df.iloc[i]['Equation']
+    current_algebraic_symbol = [0 for i in range(5)]
+    for sym in row.split(' '):
+        if sym in ['+','-','*','/','%']:
+            current_algebraic_symbol[counters[sym]-4]+=1
+    algebraic_symbols.append(str(current_algebraic_symbol))
+
+df['algebra'] = algebraic_symbols
+
+
 output_vocabulary = vocab(counters,)
 
-train_df , valid_df = train_test_split(df,test_size=0.1,random_state=0)
+train_df , valid_df = train_test_split(df,test_size=0.1,random_state=0,stratify=df['algebraic_symbols'])
 
 
 # In[3]:
@@ -484,7 +496,7 @@ class T5ArithTranslator(pl.LightningModule):
 # In[ ]:
 
 
-N_EPOCHS = 50
+N_EPOCHS = 300
 BATCH_SIZE = 32
 
 

@@ -33,6 +33,10 @@ counters = {"[PAD]":1,"<SOS>":2,"<EOS>" : 3 , "+" : 4, "-" :5 , "*" : 6 , "/" : 
 for i in range(10):
     counters["number"+str(i)] = i + 8
 
+
+
+
+
 output_vocabulary = vocab(counters,)
 
 train_df , valid_df = train_test_split(df,test_size=0.1,random_state=0)
