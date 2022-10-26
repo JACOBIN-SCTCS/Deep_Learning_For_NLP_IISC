@@ -589,7 +589,7 @@ bert_tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 # In[ ]:
 
 
-def predict(model, input_sequence, max_length=128, SOS_token=1, EOS_token=2):
+def predict(model, input_sequence, attention_mask ,max_length=128, SOS_token=1, EOS_token=2):
     """
     Method from "A detailed guide to Pytorch's nn.Transformer() module.", by
     Daniel Melchor: https://medium.com/@danielmelchor/a-detailed-guide-to-pytorchs-nn-transformer-module-c80afbc9ffb1
@@ -604,8 +604,8 @@ def predict(model, input_sequence, max_length=128, SOS_token=1, EOS_token=2):
     for _ in range(max_length):
         # Get source mask
         tgt_mask = model.transformer.get_tgt_mask(y_input.size(1)).to(device_fast)
-        
-        pred = model(input_sequence, y_input, target_mask=tgt_mask)
+        src_padding_mask = model.transformer.get_padding_mask(attention_mask,0)
+        pred = model(input_sequence, y_input,src_padding_mask=src_padding_mask,target_mask=tgt_mask)
         
         next_item = pred.topk(1)[1].view(-1)[-1].item() # num with highest probability
         next_item = torch.tensor([[next_item]], device=device_fast)
@@ -623,16 +623,39 @@ def predict(model, input_sequence, max_length=128, SOS_token=1, EOS_token=2):
 # In[ ]:
 
 
-test_input_ids = bert_tokenizer("last stop in their field trip was the aquarium . penny identified number0 species of sharks number1 species of eels and number2 different species of whales . [SEP] how many species was penny able to identify ?",return_tensors='pt').input_ids
-
+test_word_encoding = bert_tokenizer("last stop in their field trip was the aquarium . penny identified number0 species of sharks number1 species of eels and number2 different species of whales . [SEP] how many species was penny able to identify ?",return_tensors='pt')
+test_input_ids = test_word_encoding.input_ids
+test_attention_mask = test_word_encoding.attention_mask
 
 # In[ ]:
 
 test_model = test_model.to(device_fast)
-ans = predict(test_model,test_input_ids.to(device_fast))
+ans = predict(test_model,test_input_ids.to(device_fast),test_attention_mask.to(device_fast))
 print(ans)
 
 # In[ ]:
+
+def get_answers(model,tokenizer,filename):
+    
+    answers = []
+    df = pd.read_excel(filename)
+    df = df.drop('Table 1',axis=1)
+    df = df.rename(columns=df.iloc[0]).loc[1:]
+
+    for i in range(len(df)):
+        row = df.iloc[i]
+
+        word_encoding = tokenizer(row['Description'] + " [SEP] " + row['Question'])
+        word_input_ids = word_encoding.input_ids 
+        word_attention_mask = word_encoding.attention_mask
+
+        ans = predict(model,word_input_ids,word_attention_mask)   
+
+        final_answer = " ".join(output_vocabulary.lookup_tokens(ans))
+        answers.append(final_answer)
+    
+    return answers
+
 
 
 #outputs = test_model.t5_model.generate(test_input_ids)
