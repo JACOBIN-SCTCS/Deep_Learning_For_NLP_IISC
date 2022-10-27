@@ -33,10 +33,6 @@ counters = {"[PAD]":1,"<SOS>":2,"<EOS>" : 3 , "+" : 4, "-" :5 , "*" : 6 , "/" : 
 for i in range(10):
     counters["number"+str(i)] = i + 8
 
-
-
-
-
 output_vocabulary = vocab(counters,)
 
 train_df , valid_df = train_test_split(df,test_size=0.1,random_state=0)
@@ -552,7 +548,7 @@ model = TransformerTranslator(
 #)
 
 '''test_model =  TransformerTranslator.load_from_checkpoint(
-    './checkpoints/transformer-scratch-best-checkpoint.ckpt'
+    './checkpoints/transformer-scratch-adamw-7l-best-checkpoint.ckpt'
 )
 
 test_model.freeze()'''
@@ -578,7 +574,7 @@ test_model = TransformerTranslator(
     Dropout_p
 )
 
-test_model.load_state_dict(torch.load('./checkpoints/transformer-scratch-best-checkpoint.ckpt',map_location=device_fast)["state_dict"])
+test_model.load_state_dict(torch.load('./checkpoints/transformer-scratch-best-checkpoint-v1.ckpt',map_location=device_fast)["state_dict"])
 test_model.eval()
 
 
@@ -631,14 +627,14 @@ def predict(model, input_sequence, src_padding_mask=None ,max_length=128, SOS_to
 # In[ ]:
 
 
-test_input_ids = bert_tokenizer("There are number0 items in the cart. Each item costs number0 . [SEP] What is the total cost of items ?",return_tensors='pt').input_ids
+test_input_ids = bert_tokenizer("Jacob has number0 dollars with him . He wants to buy a watch and each watch costs number1 dollars . [SEP] How many watches can he buy ?",return_tensors='pt').input_ids
 
 
 # In[ ]:
 
 test_model = test_model.to(device_fast)
 ans = predict(test_model,test_input_ids.to(device_fast))
-print(ans)
+print(" ".join(output_vocabulary.lookup_tokens(ans)))
 
 # In[ ]:
 
@@ -650,13 +646,13 @@ def get_answers(model,tokenizer,filename):
     input_numbers = []
     
     df = pd.read_excel(filename)
-    #df = df.drop('Table 1',axis=1)
-    #df = df.rename(columns=df.iloc[0]).loc[1:]
+    df = df.drop('Table 1',axis=1)
+    df = df.rename(columns=df.iloc[0]).loc[1:]
 
-    for i in range(10):
+    for i in range(min(len(df),1000)):
         row = df.iloc[i]
 
-        input_number = [int(n) for n in row['Input Numbers'].split(' ')]
+        input_number = [float(n) for n in row['Input Numbers'].split(' ')]
         input_numbers.append(input_number)
         word_encoding = tokenizer(row['Description'] + " [SEP] " + row['Question'],return_tensors='pt')
         word_input_ids = word_encoding.input_ids 
@@ -672,7 +668,7 @@ def get_answers(model,tokenizer,filename):
     return answers,input_numbers
 
 
-answers = get_answers(test_model,bert_tokenizer,'ArithOpsTest.xlsx')
+answers = get_answers(test_model,bert_tokenizer,'ArithOpsTrain.xlsx')
 print(answers)
 results = postfix_evaluation(answers[0],answers[1])
 print(results)
@@ -683,6 +679,10 @@ print(results)
 
 # In[ ]:
 
+result_df = pd.DataFrame()
+result_df['Jacob James K'] = results
+result_df = result_df.reset_index(drop=True)
+result_df.to_excel("submission.xlsx",index=False)
 
 #text = t5_tokenizer.decode(outputs[0], skip_special_tokens=True)
 #print(text.split(' '))

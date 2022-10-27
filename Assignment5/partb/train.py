@@ -15,6 +15,7 @@ import torch.nn as nn
 import torch
 from torch.utils.data import DataLoader
 from torchtext.vocab import vocab
+from torchmetrics import Accuracy
 
 train_dataset_name = 'ArithOpsTrain.xlsx'
 df = pd.read_excel(train_dataset_name)
@@ -346,6 +347,9 @@ class TransformerTranslator(pl.LightningModule):
                 dim_feedforward= dim_feedforward,
                 dropout_p=dropout_p
             )
+        
+        self.exactmatch_accuracy = Accuracy(mdmc_reduce='samplewise')
+
 
         self.loss_fn = nn.CrossEntropyLoss()
 
@@ -431,9 +435,16 @@ class TransformerTranslator(pl.LightningModule):
         valid_loss = loss_value*(1.0/predictions.shape[0])
         #valid_loss = self.loss_fn(predictions,output_expected)
         
-        self.log("valid_loss" , valid_loss, prog_bar=True,logger=True)
-  
-        return valid_loss
+        correct_predictions = torch.topk(predictions,1,dim=2).indices.squeeze(2)
+        exact_match_acc = self.exactmatch_accuracy(correct_predictions,output_expected)
+
+        metrics = {"valid_loss" : valid_loss, "valid_acc" : exact_match_acc}
+        self.log_dict(metrics)
+        return metrics
+
+        #self.log("valid_loss" , valid_loss, prog_bar=True,logger=True)
+
+        #return valid_loss
     
     def configure_optimizers(self):
         return optim.Adam(self.parameters(),lr = 0.0001)
@@ -502,14 +513,14 @@ BATCH_SIZE = 32
 
 checkpoint_callback = ModelCheckpoint(
     dirpath = "checkpoints",
-    filename="transformer-scratch-best-checkpoint",
+    filename="transformer-scratch-adam-6l-16h-best-checkpoint",
     save_top_k = 1,
     verbose = True,
     monitor="valid_loss",
     mode = "min"
 )
 
-logger = TensorBoardLogger("transformer_scratch_logs",name="transformertranslator")
+logger = TensorBoardLogger("transformer_scratch_adam_6l_16h_logs",name="transformertranslator")
 
 trainer = pl.Trainer(
     logger = logger,
@@ -528,7 +539,7 @@ trainer = pl.Trainer(
 Num_tokens_input=30522
 Num_tokens_output=len(output_vocabulary)
 Dim_model=768
-Num_heads=8
+Num_heads=16
 Num_encoder_layers=6
 Num_decoder_layers=6
 Dim_feedforward= 2048
