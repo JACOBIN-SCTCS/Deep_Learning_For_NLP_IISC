@@ -6,16 +6,17 @@
 
 import pandas as pd
 from torch.utils.data import DataLoader,Dataset
-from transformers import  MT5ForConditionalGeneration,T5Tokenizer
+from transformers import FSMTForConditionalGeneration, FSMTTokenizer
 from transformers import DataCollatorForSeq2Seq
 from sklearn.model_selection import train_test_split
 import torch
 import evaluate
 
-NUM_EPOCHS = 10
-BATCH_SIZE = 64
+NUM_EPOCHS = 1
+BATCH_SIZE = 8
 metric = evaluate.load("sacrebleu")
-prompt = "translate English to German: "
+#prompt = "translate English to German: "
+mname = "facebook/wmt19-en-de"
 
 
 # In[14]:
@@ -23,16 +24,17 @@ prompt = "translate English to German: "
 
 class TranslationDataset(Dataset):
 
-    def __init__(self,data_frame,tokenizer_name='google/mt5-base') -> None:
+    def __init__(self,data_frame,tokenizer_name=mname) -> None:
         super().__init__()
         self.dataframe = data_frame
-        self.tokenizer = T5Tokenizer.from_pretrained(tokenizer_name,cache_dir='./.cache')
+        self.tokenizer = FSMTTokenizer.from_pretrained(tokenizer_name,cache_dir='./.cache')
+
 
     def __len__(self):
         return self.dataframe.shape[0]
     def __getitem__(self, index):
-        tokenized_data = self.tokenizer(prompt + self.dataframe.iloc[index,0],text_target=self.dataframe.iloc[index,1], return_tensors="pt")
-        
+        tokenized_data = self.tokenizer(self.dataframe.iloc[index,0],text_target=self.dataframe.iloc[index,1], return_tensors="pt")
+     
         tokenized_data['input_ids'] = tokenized_data['input_ids'].squeeze(0)
         tokenized_data['attention_mask'] = tokenized_data['attention_mask'].squeeze(0)
         tokenized_data['labels'] = tokenized_data['labels'].squeeze(0)
@@ -42,9 +44,10 @@ class TranslationDataset(Dataset):
 # In[15]:
 
 
-tokenizer_name = "google/mt5-base"
-translation_model = MT5ForConditionalGeneration.from_pretrained("google/mt5-base",cache_dir='./.cache')
-t5_tokenizer =  T5Tokenizer.from_pretrained(tokenizer_name,cache_dir='./.cache')
+tokenizer_name = mname
+#translation_model = FSMTForConditionalGeneration.from_pretrained(mname,cache_dir='./.cache')
+translation_model = FSMTForConditionalGeneration.from_pretrained(mname)
+t5_tokenizer = FSMTTokenizer.from_pretrained(mname,cache_dir='./.cache')
 
 data_collator = DataCollatorForSeq2Seq(t5_tokenizer, model=translation_model, return_tensors="pt")
 def collate_fn(batch_data):
@@ -55,7 +58,9 @@ def collate_fn(batch_data):
 
 
 data_frame = pd.read_csv("./data/EN-DE.txt", sep='\t',header=0, names=['src', 'trg', 'c1','c2','c3','c4','c5','c6'])[:100]
-train_df , valid_df = train_test_split(data_frame,test_size=0.07)
+train_df , valid_df = train_test_split(data_frame,test_size=0.07,random_state=0)
+train_df.to_csv('train_df.tsv',sep="\t")
+valid_df.to_csv('valid_df.tsv',sep="\t")
 
 
 # In[17]:
@@ -80,10 +85,13 @@ args = Seq2SeqTrainingArguments(
     per_device_train_batch_size=BATCH_SIZE,
     per_device_eval_batch_size=BATCH_SIZE,
     weight_decay=0.01,
-    save_total_limit=1,
-    num_train_epochs=1,
+    save_total_limit=2,
+    num_train_epochs=NUM_EPOCHS,
     predict_with_generate=True,
     push_to_hub=True,
+    evaluation_strategy = "epoch",
+    save_strategy="steps",
+    save_steps = 10000,
 )
 
 
@@ -106,7 +114,7 @@ def compute_metrics(eval_preds):
     decoded_preds = t5_tokenizer.batch_decode(preds, skip_special_tokens=True)
 
     # Replace -100 in the labels as we can't decode them.
-    labels = np.where(labels != -100, labels, t5_tokenizer.pad_token_id)
+    labels = np.where(labels != 1, labels, t5_tokenizer.pad_token_id)
     decoded_labels = t5_tokenizer.batch_decode(labels, skip_special_tokens=True)
 
     # Some simple post-processing
@@ -130,7 +138,7 @@ trainer = Seq2SeqTrainer(
     eval_dataset=valid_dataset,
     data_collator=data_collator,
     tokenizer=t5_tokenizer,
-    compute_metrics=compute_metrics
+    compute_metrics=compute_metrics,
 )
 
 
@@ -174,23 +182,29 @@ trainer.push_to_hub()
 
 
 '''
-BATCH_SIZE = 6
+BATCH_SIZE = 3
 
 train_dataloader = DataLoader(train_dataset,BATCH_SIZE,collate_fn=collate_fn,shuffle=True)
-valid_dataloader = DataLoader(valid_dataset,BATCH_SIZE,collate_fn=collate_fn,shuffle=False)'''
+valid_dataloader = DataLoader(valid_dataset,BATCH_SIZE,collate_fn=collate_fn,shuffle=False)
 
 
 # In[ ]:
 
 
-'''batch_data = next(iter(train_dataloader))
+batch_data = next(iter(train_dataloader))
+print(batch_data)
 
 outputs = translation_model(**batch_data)
+print(outputs)
+'''
+'''
 logits = outputs.logits
 predictions = torch.argmax(logits, dim=-1)
 
 
-compute_metrics((predictions,batch_data['labels']))'''
+compute_metrics((predictions,batch_data['labels']))
+
+'''
 
 
 # In[ ]:
